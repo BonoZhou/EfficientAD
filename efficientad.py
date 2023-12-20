@@ -10,7 +10,7 @@ import itertools
 import os
 import random
 from tqdm import tqdm
-from common import get_autoencoder, get_pdn_small, get_pdn_medium, \
+from common import get_autoencoder, get_pdn_small, get_pdn_medium, get_my_autoencoder, \
     ImageFolderWithoutTarget, ImageFolderWithPath, InfiniteDataloader
 from sklearn.metrics import roc_auc_score
 
@@ -43,11 +43,11 @@ def get_argparse():
 seed = 42
 on_gpu = torch.cuda.is_available()
 out_channels = 384
-image_size = 256
+image_size = [640,256]
 
 # data loading
 default_transform = transforms.Compose([
-    transforms.Resize((image_size, image_size)),
+    transforms.Resize((image_size[0], image_size[1])),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
@@ -83,8 +83,10 @@ def main():
                                     config.dataset, config.subdataset)
     test_output_dir = os.path.join(config.output_dir, 'anomaly_maps',
                                    config.dataset, config.subdataset, 'test')
-    os.makedirs(train_output_dir)
-    os.makedirs(test_output_dir)
+    if not os.path.exists(train_output_dir):
+        os.makedirs(train_output_dir)
+    if not os.path.exists(test_output_dir):
+        os.makedirs(test_output_dir)
 
     # load data
     full_train_set = ImageFolderWithoutTarget(
@@ -118,9 +120,9 @@ def main():
     if pretrain_penalty:
         # load pretraining data for penalty
         penalty_transform = transforms.Compose([
-            transforms.Resize((2 * image_size, 2 * image_size)),
+            transforms.Resize((2 * image_size[0], 2 * image_size[1])),
             transforms.RandomGrayscale(0.3),
-            transforms.CenterCrop(image_size),
+            transforms.CenterCrop((image_size[0],image_size[1])),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224,
                                                                   0.225])
@@ -135,16 +137,16 @@ def main():
 
     # create models
     if config.model_size == 'small':
-        teacher = get_pdn_small(out_channels)
-        student = get_pdn_small(2 * out_channels)
+        teacher = get_pdn_small(out_channels,True)
+        student = get_pdn_small(2 * out_channels,True)
     elif config.model_size == 'medium':
-        teacher = get_pdn_medium(out_channels)
-        student = get_pdn_medium(2 * out_channels)
+        teacher = get_pdn_medium(out_channels,True)
+        student = get_pdn_medium(2 * out_channels,True)
     else:
         raise Exception()
     state_dict = torch.load(config.weights, map_location='cpu')
     teacher.load_state_dict(state_dict)
-    autoencoder = get_autoencoder(out_channels)
+    autoencoder = get_my_autoencoder(out_channels, image_size)
 
     # teacher frozen
     teacher.eval()
@@ -276,11 +278,14 @@ def test(test_set, teacher, student, autoencoder, teacher_mean, teacher_std,
             autoencoder=autoencoder, teacher_mean=teacher_mean,
             teacher_std=teacher_std, q_st_start=q_st_start, q_st_end=q_st_end,
             q_ae_start=q_ae_start, q_ae_end=q_ae_end)
-        map_combined = torch.nn.functional.pad(map_combined, (4, 4, 4, 4))
+        # print(map_combined.shape)
+        # map_combined = torch.nn.functional.pad(map_combined, (4, 4, 4, 4))
         map_combined = torch.nn.functional.interpolate(
             map_combined, (orig_height, orig_width), mode='bilinear')
+        
+        # print(map_combined.shape)
         map_combined = map_combined[0, 0].cpu().numpy()
-
+        # print(map_combined.shape)
         defect_class = os.path.basename(os.path.dirname(path))
         if test_output_dir is not None:
             img_nm = os.path.split(path)[1].split('.')[0]

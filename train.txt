@@ -1,0 +1,1 @@
+python efficientad.py --dataset mvtec_ad --subdataset capsule --model_size medium --weights models/teacher_medium.pth --imagenet_train_path ..\anomalib\datasets\imagenette\imagenette2\train --mvtec_ad_path ..\anomalib\datasets\MVTec
